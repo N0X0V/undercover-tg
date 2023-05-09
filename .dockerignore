@@ -1,0 +1,4 @@
+.env.template
+.venv
+.gitignore
+README.md
