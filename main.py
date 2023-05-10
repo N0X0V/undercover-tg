@@ -33,18 +33,52 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Parses the CallbackQuery and edits message"""
     query = update.callback_query
     await query.answer()
-    message = (
-        "A new game has been launched ! Click on the button below if you want to join !"
-        if query.data == "1"
-        else "Returning to sleep"
-    )
-    yes_button = InlineKeyboardButton("I'm in !", callback_data="1")
-    no_button = InlineKeyboardButton("Not for me this time", callback_data="2")
-    new_reply_markup = InlineKeyboardMarkup([[yes_button, no_button]])
-    await query.edit_message_text(
-        text=message,
-    )
-    await query.edit_message_reply_markup(reply_markup=new_reply_markup)
+    user_list = set(["Setelec"])
+    data = query.data
+    if data == "1":
+        message = "\nA new game has been launched ! \n \nList of registered players:"
+        yes_button = InlineKeyboardButton("I'm in !", callback_data="3")
+        no_button = InlineKeyboardButton("Not for me this time", callback_data="4")
+        new_reply_markup = InlineKeyboardMarkup([[yes_button, no_button]])
+        await query.edit_message_text(
+            text=message,
+        )
+        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
+
+    elif data == "2":
+        message = "Okay, I'm going back to sleep then"
+        new_reply_markup = InlineKeyboardMarkup([[]])
+        await query.edit_message_text(
+            text=message,
+        )
+        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
+
+    elif data == "3":
+        user = query.from_user.username
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text=f"Welcome to our new player @{user}!"
+        )
+        user_list.add(user)
+        list_of_users = "".join([f"\n- @{username}" for username in user_list])
+        await query.edit_message_text(
+            text=f"\nA new game has been launched ! \n \nList of registered players: {list_of_users}",
+        )
+        depaps_button = InlineKeyboardButton("Cancel registration", callback_data="5")
+        new_reply_markup = InlineKeyboardMarkup([[depaps_button]])
+        await query.edit_message_reply_markup(new_reply_markup)
+    elif data == "4":
+        pass
+    elif data == "5":
+        user = query.from_user.username
+        user_list.remove(user)
+        list_of_users = "".join([f"\n- @{username}" for username in user_list])
+        await query.edit_message_text(
+            text=f"\nA new game has been launched ! \n \nList of registered players: {list_of_users}",
+        )
+        yes_button = InlineKeyboardButton("I'm in !", callback_data="3")
+        no_button = InlineKeyboardButton("Not for me this time", callback_data="4")
+        new_reply_markup = InlineKeyboardMarkup([[yes_button, no_button]])
+        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
 
 
 def main() -> None:
