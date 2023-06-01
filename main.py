@@ -6,19 +6,83 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     CallbackQueryHandler,
+    ConversationHandler,
 )
+import time
+
+JOINING, GAME = range(2)
+PLAYERS = set([])
+START_MESSAGE = -1
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Handle /start command
+    Initiate the game
     """
-    yes_button = InlineKeyboardButton("Yes ! Let's go !", callback_data="1")
-    no_button = InlineKeyboardButton("Not now ^^'", callback_data="2")
+    global START_MESSAGE
+    yes_button = InlineKeyboardButton("Join", callback_data=JOINING)
+    no_button = InlineKeyboardButton("Not now actually ^^'", callback_data="sleep")
     keyboard_markup = InlineKeyboardMarkup([[yes_button, no_button]])
-    await update.message.reply_text(
-        "Do you want to start a new game of Undercover ?", reply_markup=keyboard_markup
+    message = await update.message.reply_text(
+        "A new game has been launched !",
+        reply_markup=keyboard_markup,
     )
+    if START_MESSAGE != -1:
+        await update.message.reply_text(
+            "A game is already being played",
+            reply_markup=keyboard_markup,
+        )
+    START_MESSAGE = message
+    await context.bot.pin_chat_message(
+        chat_id=update.effective_chat.id, message_id=START_MESSAGE.message_id
+    )
+    return JOINING
+
+
+async def joining(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Updates list of players"""
+    query = update.callback_query
+    await query.answer()
+    user = update.callback_query.from_user.username
+    if query.data != str(JOINING):
+        if user in PLAYERS:
+            PLAYERS.remove(str(user))
+        message = f"@{user} is eepy and will not take part in the next game :/"
+    if query.data == str(JOINING) and user in PLAYERS:
+        message = "Already registered :)"
+    if query.data == str(JOINING) and user not in PLAYERS:
+        message = f"Welcome on board @{user}!"
+        PLAYERS.add(user)
+        baseString = "\n - @"
+        await context.bot.edit_message_text(
+            text=f"{START_MESSAGE.text}\n\nList of players:{baseString+baseString.join(PLAYERS)}",
+            chat_id=update.effective_chat.id,
+            message_id=START_MESSAGE.message_id,
+        )
+
+    welcome = await context.bot.send_message(
+        chat_id=update.effective_chat.id, text=message
+    )
+    time.sleep(5)
+    await context.bot.delete_message(
+        chat_id=update.effective_chat.id, message_id=welcome.message_id
+    )
+
+
+async def gameStart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Launches the game
+    """
+    await update.message.reply_text(text="Okayyyyy let's go!")
+    return GAME
+
+
+async def game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Temporary
+    Should manage the game in the future
+    """
+    await update.message.reply_text(text="G@ming")
 
 
 async def showUpdate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -29,58 +93,6 @@ async def showUpdate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await context.bot.send_message(chat_id=update.effective_chat.id, text=str(update))
 
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Parses the CallbackQuery and edits message"""
-    query = update.callback_query
-    await query.answer()
-    user_list = set(["Setelec"])
-    data = query.data
-    if data == "1":
-        message = "\nA new game has been launched ! \n \nList of registered players:"
-        yes_button = InlineKeyboardButton("I'm in !", callback_data="3")
-        no_button = InlineKeyboardButton("Not for me this time", callback_data="4")
-        new_reply_markup = InlineKeyboardMarkup([[yes_button, no_button]])
-        await query.edit_message_text(
-            text=message,
-        )
-        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
-
-    elif data == "2":
-        message = "Okay, I'm going back to sleep then"
-        new_reply_markup = InlineKeyboardMarkup([[]])
-        await query.edit_message_text(
-            text=message,
-        )
-        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
-
-    elif data == "3":
-        user = query.from_user.username
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id, text=f"Welcome to our new player @{user}!"
-        )
-        user_list.add(user)
-        list_of_users = "".join([f"\n- @{username}" for username in user_list])
-        await query.edit_message_text(
-            text=f"\nA new game has been launched ! \n \nList of registered players: {list_of_users}",
-        )
-        depaps_button = InlineKeyboardButton("Cancel registration", callback_data="5")
-        new_reply_markup = InlineKeyboardMarkup([[depaps_button]])
-        await query.edit_message_reply_markup(new_reply_markup)
-    elif data == "4":
-        pass
-    elif data == "5":
-        user = query.from_user.username
-        user_list.remove(user)
-        list_of_users = "".join([f"\n- @{username}" for username in user_list])
-        await query.edit_message_text(
-            text=f"\nA new game has been launched ! \n \nList of registered players: {list_of_users}",
-        )
-        yes_button = InlineKeyboardButton("I'm in !", callback_data="3")
-        no_button = InlineKeyboardButton("Not for me this time", callback_data="4")
-        new_reply_markup = InlineKeyboardMarkup([[yes_button, no_button]])
-        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
-
-
 def main() -> None:
     load_dotenv()
     TOKEN = os.environ.get("TOKEN")
@@ -89,11 +101,20 @@ def main() -> None:
     application = ApplicationBuilder().token(TOKEN).build()
 
     # Create Handlers
-    start_handler = CommandHandler("start", start)
+    conversationHandler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            JOINING: [
+                CommandHandler("begin", gameStart),
+                CallbackQueryHandler(joining),
+            ],
+            GAME: [CommandHandler("game", game)],
+        },
+        fallbacks=[CommandHandler("start", start)],
+    )
 
     # Add handlers to the app
-    application.add_handler(start_handler)
-    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(conversationHandler)
 
     # For development
     # showUpdateHandler = MessageHandler(
